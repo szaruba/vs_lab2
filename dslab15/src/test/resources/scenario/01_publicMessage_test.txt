@@ -1,0 +1,17 @@
+*	Chatserver	chatserver
+*	Client		alice.vienna.at
+*	Client		bill.de
+
+alice.vienna.at:	!login alice.vienna.at 12345
+>					verify("success")
+
+bill.de				!login bill.de 23456
+>					verify("success")
+
+bill.de				!send Hallo :)
+>					verify("Hallo")
+
+
+chatserver: 		!exit
+alice.vienna.at:	!exit
+bill.de				!exit
