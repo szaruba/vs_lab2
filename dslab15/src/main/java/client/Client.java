@@ -80,7 +80,10 @@ public class Client implements IClientCli, Runnable {
 			smr = new ServerMessageReader();
 			pool.execute(smr);
 			
-		} catch (IOException|ChannelException e) {
+		} catch (IOException i) {
+			System.out.println("Could not connect to server");
+			System.exit(1);
+		} catch (ChannelException e) {
 			System.out.println("Could not connect to server");
 			System.exit(1);
 		}
