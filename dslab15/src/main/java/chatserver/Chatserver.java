@@ -240,7 +240,13 @@ public class Chatserver implements IChatserverCli, Runnable {
 					sessions.add(session);
 					
 					pool.execute(session);
-				} catch (ChannelException | IOException e) {
+				} catch (ChannelException ce) {
+					if(!pool.isShutdown()){
+						System.err
+								.println("Error occurred while waiting for/communicating with client: "
+										+ ce.getMessage());
+					}
+				} catch (IOException e) {
 					if(!pool.isShutdown()){
 						System.err
 								.println("Error occurred while waiting for/communicating with client: "
