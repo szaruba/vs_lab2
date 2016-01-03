@@ -11,6 +11,10 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.rmi.NotBoundException;
+import java.rmi.RemoteException;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -28,6 +32,10 @@ import channel.ChannelException;
 import channel.TcpChannel;
 import cli.Command;
 import cli.Shell;
+import nameserver.INameserverForChatserver;
+import nameserver.Nameserver;
+import nameserver.exceptions.AlreadyRegisteredException;
+import nameserver.exceptions.InvalidDomainException;
 import util.Config;
 
 public class Chatserver implements IChatserverCli, Runnable {
@@ -52,8 +60,14 @@ public class Chatserver implements IChatserverCli, Runnable {
 	private DatagramSocket datagramSocket;
 	private ExecutorService pool = Executors.newFixedThreadPool(10);
 
-	boolean running = true;
-	
+	private boolean running = true;
+
+	// naming service
+	private String rootId;
+	private String registryHost;
+	private int registryPort;
+	private INameserverForChatserver rootNs;
+
 	/**
 	 * @param componentName
 	 *            the name of the component - represented in the prompt
@@ -79,11 +93,33 @@ public class Chatserver implements IChatserverCli, Runnable {
 			UserInformation ui = new UserInformation(username, userConfig.getString(key));
 			userInformation.put(username, ui);
 		}
-		
+
 		// initialize shell
 		shell = new Shell(componentName, userRequestStream, userResponseStream);
 		shell.register(this);
 		pool.execute(shell);
+
+		// init naming service
+		rootId = config.getString("root_id");
+		registryHost = config.getString("registry.host");
+		registryPort = config.getInt("registry.port");
+
+		try {
+			Registry registry = LocateRegistry.getRegistry(registryHost, registryPort);
+			rootNs = (INameserverForChatserver) registry.lookup(rootId);
+		} catch (RemoteException e) {
+			System.out.println("Not registry running at " + registryHost + ":" + registryPort);
+			try {
+				exit();
+			} catch (IOException e1) {
+			}
+		} catch (NotBoundException e) {
+			System.out.println("Root nameserver not found at registry by id '" + rootId + "'");
+			try {
+				exit();
+			} catch (IOException e1) {
+			}
+		}
 	}
 
 	@Override
@@ -160,8 +196,10 @@ public class Chatserver implements IChatserverCli, Runnable {
 	
 	public void logout(String username) throws ChatserverException  {
 		if(!isLoggedIn(username)) throw new ChatserverException("Not logged in");
-		
-		userInformation.get(username).setAddress(null);
+
+		// TODO: unregister the address at logout
+		//userInformation.get(username).setAddress(null);
+
 		userChannels.remove(username);
 	}
 	
@@ -185,24 +223,34 @@ public class Chatserver implements IChatserverCli, Runnable {
 	
 	public void register(String username, String address) throws ChatserverException {
 		if(!isLoggedIn(username)) throw new ChatserverException("Not logged in");
-		
-		userInformation.get(username).setAddress(address);
+
+		try {
+			rootNs.registerUser(username, address);
+		} catch (RemoteException e) {
+			throw new ChatserverException(e.getLocalizedMessage());
+		} catch (AlreadyRegisteredException e) {
+			throw new ChatserverException(e.getLocalizedMessage());
+		} catch (InvalidDomainException e) {
+			throw new ChatserverException(e.getLocalizedMessage());
+		}
 	}
 	
 	public String lookup(String username) throws ChatserverException {
-		String errorMessage = "No currently online user is registered with name " + username;
-		
-		if(!isLoggedIn(username)) throw new ChatserverException(errorMessage);
-		
-		String address = null;
-		
-		if(userInformation.containsKey(username)) {
-			address = userInformation.get(username).getAddress();
+		if(!userInformation.containsKey(username))
+			throw new ChatserverException("User '" + username + "' is currently not online.");
+
+		INameserverForChatserver ns = rootNs;
+		try {
+			while (Nameserver.getDomainLength(username) > 1) {
+				String zone = Nameserver.getLastDomainPart(username);
+				ns = ns.getNameserver(zone);
+				username = Nameserver.chopLastDomainPart(username);
+			}
+
+			return ns.lookup(username);
+		} catch (RemoteException e) {
+			throw new ChatserverException(e.getLocalizedMessage());
 		}
-		
-		if(address == null) throw new ChatserverException(errorMessage);
-		
-		return address;
 	}
 	
 	public String list() {

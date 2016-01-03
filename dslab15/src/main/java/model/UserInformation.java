@@ -5,7 +5,7 @@ import channel.Channel;
 public class UserInformation {
 	private String username;
 	private String password;
-	private String ipAddress;
+	//private String ipAddress;
 	
 	public UserInformation(String username, String password) {
 		super();
@@ -26,10 +26,10 @@ public class UserInformation {
 		this.password = password;
 	}
 
-	public String getAddress() {
-		return ipAddress;
-	}
-	public void setAddress(String ipAddress) {
-		this.ipAddress = ipAddress;
-	}
+//	public String getAddress() {
+//		return ipAddress;
+//	}
+//	public void setAddress(String ipAddress) {
+//		this.ipAddress = ipAddress;
+//	}
 }

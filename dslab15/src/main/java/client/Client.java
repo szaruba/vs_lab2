@@ -177,7 +177,10 @@ public class Client implements IClientCli, Runnable {
 	@Command
 	public String msg(String username, String message) throws IOException {
 		String address = lookup(username);
-		
+
+		if(!address.contains(":"))
+			return address;
+
 		String ip = address.split(":")[0];
 		int port = Integer.parseInt(address.split(":")[1]);
 		
