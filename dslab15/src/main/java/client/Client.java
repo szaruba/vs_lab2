@@ -12,9 +12,11 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.security.Key;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import hash.HashService;
 import model.commands.ChatserverCommand;
 import model.commands.LoginCommand;
 import model.commands.LogoutCommand;
@@ -48,7 +50,7 @@ public class Client implements IClientCli, Runnable {
 	private PrivateMessageReader pmr;
 	
 	private String username;
-	
+	private Key macKey;
 	/**
 	 * @param componentName
 	 *            the name of the component - represented in the prompt
@@ -178,26 +180,40 @@ public class Client implements IClientCli, Runnable {
 	public String msg(String username, String message) throws IOException {
 		String address = lookup(username);
 
-		if(!address.contains(":"))
-			return address;
-
 		String ip = address.split(":")[0];
 		int port = Integer.parseInt(address.split(":")[1]);
-		
+
 		Socket s = new Socket(ip, port);
-		
+
 		String response = null;
+
+		String hashedMessage = HashService.hashMessage(macKey, message);
 		try {
 			Channel privateChannel = new TcpChannel(s);
-			
-			privateChannel.write(this.username + " (private): " + message);
-			response = username + " replied with " + privateChannel.read().toString();
+
+			privateChannel.write(hashedMessage + " " + this.username + " (private): " + message);
+
+			String output = privateChannel.read().toString();
+			String outputHashedMessage = output.substring(0, output.indexOf(" "));
+			String outputMessage = output.split("\\s")[2];
+
+			Boolean isCorrect = HashService.isHashedCorrectly(macKey, outputHashedMessage, outputMessage);
+
+			if (!isCorrect){
+				System.out.println("Response from " + username + " was tampered!");
+			}
+			if (output.contains("!tampered")){
+				response = username + " replied with " + outputMessage + " (tampered!)";
+			} else {
+				response = username + " replied with " + outputMessage;
+			}
+
 		} catch (ChannelException e) {
 			response = "Network error occurred";
 		} finally {
 			s.close();
 		}
-		
+
 		return response;
 	}
 
@@ -271,16 +287,16 @@ public class Client implements IClientCli, Runnable {
 	
 		return "Bye!";
 	}
-	
+
 	private class PrivateMessageReader implements Runnable {
 		private boolean running = true;
 		private ServerSocket serverSocket;
 		private Socket socket;
-		
+
 		public PrivateMessageReader(ServerSocket serverSocket) {
 			this.serverSocket = serverSocket;
 		}
-		
+
 		@Override
 		public void run() {
 			while(running) {
@@ -288,10 +304,24 @@ public class Client implements IClientCli, Runnable {
 					socket = serverSocket.accept();
 					Channel channel = new TcpChannel(socket);
 					String message = channel.read().toString();
-					channel.write("!ack");
-					System.out.println(message);
-					
-					socket.close();					
+
+					String hashedMessage = message.substring(0, message.indexOf(" "));
+					String onlyMessage = message.split("\\s")[3];
+					Boolean isCorrect = HashService.isHashedCorrectly(macKey, hashedMessage, onlyMessage);
+					String printMessage = message.substring(message.indexOf(" ") + 1, message.length());
+
+					if (isCorrect){
+						String hashedAnswer = HashService.hashMessage(macKey, "!ack");
+						channel.write(hashedAnswer + " !ok !ack");
+						System.out.println(printMessage);
+					} else {
+						String hashedAnswer = HashService.hashMessage(macKey, "!ack");
+						channel.write(hashedAnswer + " !tampered !ack");
+						System.out.println("The following message was tampered!");
+						System.out.println(printMessage);
+					}
+
+					socket.close();
 				} catch (ChannelException e) {
 					System.out.println("Private message error: " + e.getMessage());
 				} catch (IOException e) {
@@ -299,14 +329,14 @@ public class Client implements IClientCli, Runnable {
 				}
 			}
 		}
-		
+
 		public void stop() {
 			running = false;
 			try {
 				serverSocket.close();
 				socket.close();
 			} catch (IOException e) {
-				
+
 			}
 		}
 	}
