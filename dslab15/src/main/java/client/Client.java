@@ -1,34 +1,27 @@
 package client;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.PrintStream;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.UnknownHostException;
+import java.nio.charset.Charset;
+import java.security.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import model.commands.ChatserverCommand;
-import model.commands.LoginCommand;
-import model.commands.LogoutCommand;
-import model.commands.LookupCommand;
-import model.commands.RegisterCommand;
-import model.commands.SendCommand;
+import channel.*;
+import model.commands.*;
 import model.responses.ServerMessage;
 import model.responses.ServerResponse;
-import channel.Channel;
-import channel.ChannelException;
-import channel.TcpChannel;
 import cli.Command;
 import cli.Shell;
-import util.Config;
+import org.bouncycastle.util.encoders.Base64;
+import util.*;
+
+import javax.crypto.*;
+import javax.crypto.spec.SecretKeySpec;
 
 public class Client implements IClientCli, Runnable {
 
@@ -38,7 +31,7 @@ public class Client implements IClientCli, Runnable {
 	private Shell shell;
 	private ExecutorService pool = Executors.newCachedThreadPool();
 	
-	private TcpChannel channel;
+	private ChannelDecorator channel;
 	
 	private DatagramSocket datagramSocket;
 	
@@ -48,6 +41,12 @@ public class Client implements IClientCli, Runnable {
 	private PrivateMessageReader pmr;
 	
 	private String username;
+
+	private PublicKey controllerPublicKey;
+
+	private Key serverKey;
+
+	private boolean authenticated;
 	
 	/**
 	 * @param componentName
@@ -63,6 +62,7 @@ public class Client implements IClientCli, Runnable {
 			InputStream userRequestStream, PrintStream userResponseStream) {
 		this.componentName = componentName;
 		this.config = config;
+		authenticated = false;
 
 		// init shell
 		shell = new Shell(componentName, userRequestStream, userResponseStream);
@@ -71,22 +71,36 @@ public class Client implements IClientCli, Runnable {
 		
 		// connect to server
 		try {
-			Socket socket = new Socket(config.getString("chatserver.host"), config.getInt("chatserver.tcp.port"));
-			
-			channel = new TcpChannel(socket);
+			SecurityUtils.registerBouncyCastle();
+			//loadControllerPublicKey();
+			//Socket socket = new Socket(config.getString("chatserver.host"), config.getInt("chatserver.tcp.port"));
 			
 			datagramSocket = new DatagramSocket();
-			
-			smr = new ServerMessageReader();
-			pool.execute(smr);
+
+
 			
 		} catch (IOException i) {
 			System.out.println("Could not connect to server");
 			System.exit(1);
-		} catch (ChannelException e) {
-			System.out.println("Could not connect to server");
-			System.exit(1);
 		}
+	}
+
+	private void openChannel(){
+		try {
+			Socket socket = new Socket(config.getString("chatserver.host"), config.getInt("chatserver.tcp.port"));
+			Channel tcpChannel = new TcpChannel(socket);
+			this.channel = new Base64Channel(tcpChannel);
+
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (ChannelException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void startServerMessageReader(){
+		smr = new ServerMessageReader();
+		pool.execute(smr);
 	}
 
 	@Override
@@ -105,7 +119,144 @@ public class Client implements IClientCli, Runnable {
 			return "Network error: " + e.getMessage();
 		} catch (InterruptedException e) {
 			return "No response was sent for that command";
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
+		return null;
+	}
+
+
+	private void openAESChannel(byte[] msg, byte[] aesKey, byte[] aesIv){
+		try {
+			AESChannel aesChannel = new AESChannel(this.channel, aesKey, aesIv);
+
+
+			String thirdMessage = new String(msg, Charset.defaultCharset());
+
+			final String B64 = "a -zA -Z0 -9/+ " ;
+			assert thirdMessage.matches("["+B64+"]{43}=") : "3rd message ";
+
+			if(thirdMessage.matches("["+B64+"]{43}=")){
+				System.out.println("3. Nachricht OK");
+			}else {
+				System.out.print("3. Nachricht FALSCH");
+			}
+
+			aesChannel.write(msg);
+			aesChannel.setActive(true);
+			this.channel = aesChannel;
+		} catch (ChannelException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	@Override
+	@Command
+	public String authenticate(String username) throws IOException {
+		this.username = username;
+
+		//Sende 1. Nachricht
+		byte[] challenge = SecurityUtils.generateEncryptedSecureRandom();
+		byte[] encryptedMsg = null;
+
+		String msg = "!authenticate " + username + " " + new String(challenge, Charset.defaultCharset());
+		//System.out.println(msg);
+		String publicKeyPath = config.getString("chatserver.key");
+		PublicKey publicKey = Keys.readPublicPEM(new File(publicKeyPath));
+
+		//String privateKeyPath = new Config("chatserver").getString("key");
+		//PrivateKey privateKey = Keys.readPrivatePEM(new File(privateKeyPath));
+
+		final String B64 = "a -zA -Z0 -9/+ " ;
+		assert msg.matches ("!authenticate [\\w\\.]+ ["+B64+"]{43}=") : " 1st message ";
+
+		if(msg.matches ("!authenticate [\\w\\.]+ ["+B64+"]{43}=")){
+			System.out.println("1. Nachricht OK");
+		}else{
+			System.out.println("1. Nachricht FALSCH");
+		}
+
+		if(authenticated == false){
+			System.out.println("Öffnen des Channels");
+			openChannel();
+		}
+
+		try{
+			Cipher cipher = Cipher.getInstance("RSA/NONE/OAEPWithSHA256AndMGF1Padding");
+			cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+			encryptedMsg = cipher.doFinal(msg.getBytes());
+
+			System.out.println("1. Nachricht:" + encryptedMsg);
+			channel.write(encryptedMsg);
+
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+		} catch (NoSuchPaddingException e) {
+			e.printStackTrace();
+		} catch (InvalidKeyException e) {
+			e.printStackTrace();
+		} catch (BadPaddingException e) {
+			e.printStackTrace();
+		} catch (IllegalBlockSizeException e) {
+			e.printStackTrace();
+		} catch (ChannelException e) {
+			e.printStackTrace();
+		}
+		//--------------------------------------------------------------
+		//Empfange Nachricht vom Server
+		try {
+			byte[] okMsg = (byte[]) channel.read();
+			//System.out.println("2. empfangene Nachricht " + okMsg);
+			String decryptedMessage;
+			String privateKeyPathForOk = config.getString("keys.dir");
+			PrivateKey privateKeyForOk = Keys.readPrivatePEM(new File(privateKeyPathForOk+"/"+this.username+".pem"));
+			Cipher cipher = Cipher.getInstance("RSA/NONE/OAEPWithSHA256AndMGF1Padding");
+			cipher.init(Cipher.DECRYPT_MODE, privateKeyForOk);
+			decryptedMessage = new String(cipher.doFinal(okMsg), Charset.defaultCharset());
+
+			assert decryptedMessage.matches("!ok ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{22}==") : " 2nd message ";
+
+			if(decryptedMessage.matches("!ok ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{22}==")){
+				System.out.println("2. Nachricht OK");
+			}else{
+				System.out.println("2. Nachricht FALSCH ");
+			}
+
+			System.out.println("2. Nachricht entschlüsselt" + decryptedMessage);
+
+			String[] parts = decryptedMessage.split("\\s");
+			if(parts.length != 5){
+				System.out.println("Error in recieving ok message from server");
+				return null;
+			}
+			if(!parts[1].equals(new String(challenge, Charset.defaultCharset()))){
+				System.out.println("sent challenge: "+parts[1]);
+				System.out.println("sent challenge: "+new String(challenge,Charset.defaultCharset()));
+				System.out.println("ERROR: Handshake failed due to client challenge mismatch!");
+				return null;
+			}else {
+				openAESChannel(parts[2].getBytes(), parts[3].getBytes(), parts[4].getBytes());
+				authenticated = true;
+				startServerMessageReader();
+			}
+
+		} catch (ChannelException e) {
+			e.printStackTrace();
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+		} catch (NoSuchPaddingException e) {
+			e.printStackTrace();
+		} catch (InvalidKeyException e) {
+			e.printStackTrace();
+		} catch (BadPaddingException e) {
+			e.printStackTrace();
+		} catch (IllegalBlockSizeException e) {
+			e.printStackTrace();
+		}
+
+		return null;
 	}
 	
 	@Override
@@ -176,6 +327,7 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String msg(String username, String message) throws IOException {
+		// todo überprüfen ob authentifiziert
 		String address = lookup(username);
 		
 		String ip = address.split(":")[0];
@@ -339,6 +491,8 @@ public class Client implements IClientCli, Runnable {
 				}
 			} catch (ChannelException e) {
 				System.out.println("Server not reachable.");
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
 		}
 		
@@ -364,13 +518,7 @@ public class Client implements IClientCli, Runnable {
 		new Thread(client).start();
 	}
 
-	// --- Commands needed for Lab 2. Please note that you do not have to
-	// implement them for the first submission. ---
 
-	@Override
-	public String authenticate(String username) throws IOException {
-		// TODO Auto-generated method stub
-		return null;
-	}
+
 
 }

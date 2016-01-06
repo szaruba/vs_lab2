@@ -1,11 +1,8 @@
 package chatserver;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintStream;
-import java.io.PrintWriter;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -21,7 +18,6 @@ import java.util.concurrent.Executors;
 
 
 import model.UserInformation;
-import model.commands.ChatserverCommand;
 import model.responses.ServerMessage;
 import channel.Channel;
 import channel.ChannelException;
@@ -147,6 +143,11 @@ public class Chatserver implements IChatserverCli, Runnable {
 	public boolean isLoggedIn(String username) {
 		return userChannels.containsKey(username);
 	}
+
+	public void authenticate(String username, Channel userChannel){
+		UserInformation ui = userInformation.get(username);
+		userChannels.put(username, userChannel);
+	}
 	
 	public void login(String username, String password, Channel userChannel) throws ChatserverException {
 		UserInformation ui = userInformation.get(username);
@@ -176,6 +177,8 @@ public class Chatserver implements IChatserverCli, Runnable {
 					c.write(new ServerMessage(username + ": " + message));
 				} catch (ChannelException e) {
 					fail = true;
+				} catch (IOException e) {
+					e.printStackTrace();
 				}
 			}
 		}

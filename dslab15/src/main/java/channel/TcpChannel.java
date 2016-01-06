@@ -9,6 +9,8 @@ public class TcpChannel implements Channel {
 	private ObjectOutputStream out;
 	private ObjectInputStream in;
 	private Socket socket;
+
+
 	
 	public TcpChannel(Socket socket) throws ChannelException {
 		this.socket = socket;
