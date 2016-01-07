@@ -179,19 +179,23 @@ public class Client implements IClientCli, Runnable {
 		PublicKey publicKey = Keys.readPublicPEM(new File(publicKeyPath));
 
 		//String privateKeyPath = new Config("chatserver").getString("key");
+		File file = new File("keys/chatserver/" + username + ".pub.pem");
+		if(!file.exists()){
+			return "There is no key for user '" + username + "'";
+		}
 		//PrivateKey privateKey = Keys.readPrivatePEM(new File(privateKeyPath));
 
 		final String B64 = "a -zA -Z0 -9/+ " ;
 		assert msg.matches ("!authenticate [\\w\\.]+ ["+B64+"]{43}=") : " 1st message ";
 
 		if(msg.matches ("!authenticate [\\w\\.]+ ["+B64+"]{43}=")){
-			System.out.println("1. Nachricht OK");
+			System.out.println("1. message OK");
 		}else{
-			System.out.println("1. Nachricht FALSCH");
+			System.out.println("1. message WRONG");
 		}
 
 		if(authenticated == false){
-			System.out.println("Öffnen des Channels");
+			System.out.println("opening channel...");
 			try {
 				openChannel();
 
@@ -482,8 +486,11 @@ public class Client implements IClientCli, Runnable {
 		if(username != null) {
 			try {
 				// logout
-				channel.write(new LogoutCommand());
-				smr.waitForServerResponse();
+				if(authenticated){
+					channel.write(new LogoutCommand());
+					smr.waitForServerResponse();
+				}
+
 			} catch (ChannelException e) {
 				
 			} catch (InterruptedException e) {
@@ -491,13 +498,15 @@ public class Client implements IClientCli, Runnable {
 			}
 		}
 		
-		pool.shutdownNow();
+		if(pool != null)
+			pool.shutdownNow();
 		
 		// stop resources
 		if(pmr != null)
 			pmr.stop();
 		
-		smr.stop();
+		if(smr != null)
+			smr.stop();
 	
 		return "Bye!";
 	}
@@ -586,6 +595,7 @@ public class Client implements IClientCli, Runnable {
 				}
 			} catch (ChannelException e) {
 				System.out.println("Server not reachable.");
+				authenticated = false;
 			} catch (IOException e) {
 
 			}

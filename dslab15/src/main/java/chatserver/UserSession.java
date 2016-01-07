@@ -162,26 +162,36 @@ public class UserSession implements Runnable {
 	public void run() {
 		Object request;
 		// read client requests
-		
-		while (running) {
-
-			try {
+		try {
+			while (running) {
 				request = channel.read();
-				
-				ChatserverCommand command = (ChatserverCommand) request;
-				
-				command.setUserSession(this);
-				
-				channel.write(command.execute());
-				
-			} catch (ChannelException e) {
-				System.out.println("Error: " + e.getLocalizedMessage());
-			} catch (IOException e) {
-				System.out.println("Error: " + e.getLocalizedMessage());
-			}
 
+				ChatserverCommand command = (ChatserverCommand) request;
+
+				command.setUserSession(this);
+
+				channel.write(command.execute());
+			}
+		} catch (ChannelException e) {
+			System.out.println("User disconnected.");
+			close();
+			try {
+				server.logout(loggedInUser);
+			} catch (ChatserverException e1) {
+
+			}
+		} catch (IOException e) {
+			System.out.println("User disconnected.");
+			close();
+			try {
+				server.logout(loggedInUser);
+			} catch (ChatserverException e1) {
+
+			}
 		}
 	}
+
+
 
 	public String getLoggedInUser() {
 		return loggedInUser;
