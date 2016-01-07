@@ -113,7 +113,7 @@ public class Nameserver implements INameserverCli, Runnable, INameserver {
 			shell.register(this);
 			new Thread(shell).start();
 		} catch (Exception e) {
-			System.out.println("Nameserver could not start: " + e.getLocalizedMessage());
+			System.out.println("Nameserver could not start. Was the root nameserver started? (" + e.getLocalizedMessage() + ")");
 			try {
 				exit();
 			} catch (IOException e1) {

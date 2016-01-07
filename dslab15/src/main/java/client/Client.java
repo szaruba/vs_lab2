@@ -94,16 +94,15 @@ public class Client implements IClientCli, Runnable {
 		}
 	}
 
-	private void openChannel(){
+	private void openChannel() throws ClientException {
 		try {
 			Socket socket = new Socket(config.getString("chatserver.host"), config.getInt("chatserver.tcp.port"));
 			Channel tcpChannel = new TcpChannel(socket);
 			this.channel = new Base64Channel(tcpChannel);
-
 		} catch (IOException e) {
-			System.out.println("Network error: " + e.getLocalizedMessage());
+			throw new ClientException("Network error: " + e.getLocalizedMessage());
 		} catch (ChannelException e) {
-			System.out.println("Network error: " + e.getLocalizedMessage());
+			throw new ClientException("Server not reachable. Is the chatserver running? (" + e.getLocalizedMessage() + ")");
 		}
 	}
 
@@ -193,82 +192,86 @@ public class Client implements IClientCli, Runnable {
 
 		if(authenticated == false){
 			System.out.println("Öffnen des Channels");
-			openChannel();
-		}
+			try {
+				openChannel();
 
-		try{
-			Cipher cipher = Cipher.getInstance("RSA/NONE/OAEPWithSHA256AndMGF1Padding");
-			cipher.init(Cipher.ENCRYPT_MODE, publicKey);
-			encryptedMsg = cipher.doFinal(msg.getBytes());
+				try{
+					Cipher cipher = Cipher.getInstance("RSA/NONE/OAEPWithSHA256AndMGF1Padding");
+					cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+					encryptedMsg = cipher.doFinal(msg.getBytes());
 
-			//System.out.println("1. Nachricht:" + encryptedMsg);
-			channel.write(encryptedMsg);
+					//System.out.println("1. Nachricht:" + encryptedMsg);
+					channel.write(encryptedMsg);
 
-		} catch (NoSuchAlgorithmException e) {
-			return "Handshake error. Check your keyfile.";
-		} catch (NoSuchPaddingException e) {
-			return "Handshake error. Check your keyfile.";
-		} catch (InvalidKeyException e) {
-			return "Handshake error. Check your keyfile.";
-		} catch (BadPaddingException e) {
-			return "Handshake error. Check your keyfile.";
-		} catch (IllegalBlockSizeException e) {
-			return "Handshake error. Check your keyfile.";
-		} catch (ChannelException e) {
-			return "Handshake error. Check your keyfile.";
-		}
-		//--------------------------------------------------------------
-		//Empfange Nachricht vom Server
-		try {
-			byte[] okMsg = (byte[]) channel.read();
-			//System.out.println("2. empfangene Nachricht " + okMsg);
-			String decryptedMessage;
-			String privateKeyPathForOk = config.getString("keys.dir");
-			PrivateKey privateKeyForOk = Keys.readPrivatePEM(new File(privateKeyPathForOk+"/"+username+".pem"));
-			Cipher cipher = Cipher.getInstance("RSA/NONE/OAEPWithSHA256AndMGF1Padding");
-			cipher.init(Cipher.DECRYPT_MODE, privateKeyForOk);
-			decryptedMessage = new String(cipher.doFinal(okMsg), Charset.defaultCharset());
+				} catch (NoSuchAlgorithmException e) {
+					return "Handshake error. Check your keyfile.";
+				} catch (NoSuchPaddingException e) {
+					return "Handshake error. Check your keyfile.";
+				} catch (InvalidKeyException e) {
+					return "Handshake error. Check your keyfile.";
+				} catch (BadPaddingException e) {
+					return "Handshake error. Check your keyfile.";
+				} catch (IllegalBlockSizeException e) {
+					return "Handshake error. Check your keyfile.";
+				} catch (ChannelException e) {
+					return "Handshake error. Check your keyfile.";
+				}
+				//--------------------------------------------------------------
+				//Empfange Nachricht vom Server
+				try {
+					byte[] okMsg = (byte[]) channel.read();
+					//System.out.println("2. empfangene Nachricht " + okMsg);
+					String decryptedMessage;
+					String privateKeyPathForOk = config.getString("keys.dir");
+					PrivateKey privateKeyForOk = Keys.readPrivatePEM(new File(privateKeyPathForOk+"/"+username+".pem"));
+					Cipher cipher = Cipher.getInstance("RSA/NONE/OAEPWithSHA256AndMGF1Padding");
+					cipher.init(Cipher.DECRYPT_MODE, privateKeyForOk);
+					decryptedMessage = new String(cipher.doFinal(okMsg), Charset.defaultCharset());
 
-			assert decryptedMessage.matches("!ok ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{22}==") : " 2nd message ";
+					assert decryptedMessage.matches("!ok ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{22}==") : " 2nd message ";
 
-			if(decryptedMessage.matches("!ok ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{22}==")){
-				System.out.println("2. Nachricht OK");
-			}else{
-				System.out.println("2. Nachricht FALSCH ");
+					if(decryptedMessage.matches("!ok ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{43}= ["+B64+"]{22}==")){
+						System.out.println("2. Nachricht OK");
+					}else{
+						System.out.println("2. Nachricht FALSCH ");
+					}
+
+					//System.out.println("2. Nachricht entschlüsselt" + decryptedMessage);
+
+					String[] parts = decryptedMessage.split("\\s");
+					if(parts.length != 5){
+						return "Error in recieving ok message from server";
+					}
+					if(!parts[1].equals(new String(challenge, Charset.defaultCharset()))){
+						System.out.println("sent challenge: "+parts[1]);
+						System.out.println("sent challenge: "+new String(challenge,Charset.defaultCharset()));
+						System.out.println("ERROR: Handshake failed due to client challenge mismatch!");
+						return null;
+					}else {
+						String outcome = openAESChannel(username, parts[2].getBytes(), parts[3].getBytes(), parts[4].getBytes());
+						authenticated = true;
+						startServerMessageReader();
+						return outcome;
+					}
+
+				} catch (ChannelException e) {
+					return "Handshake error. Check your keyfile.";
+				} catch (NoSuchAlgorithmException e) {
+					return "Handshake error. Check your keyfile.";
+				} catch (NoSuchPaddingException e) {
+					return "Handshake error. Check your keyfile.";
+				} catch (InvalidKeyException e) {
+					return "Handshake error. Check your keyfile.";
+				} catch (BadPaddingException e) {
+					return "Handshake error. Check your keyfile.";
+				} catch (IllegalBlockSizeException e) {
+					return "Handshake error. Check your keyfile.";
+				}
+			} catch (ClientException e) {
+				return e.getLocalizedMessage();
 			}
-
-			//System.out.println("2. Nachricht entschlüsselt" + decryptedMessage);
-
-			String[] parts = decryptedMessage.split("\\s");
-			if(parts.length != 5){
-				System.out.println("Error in recieving ok message from server");
-				return null;
-			}
-			if(!parts[1].equals(new String(challenge, Charset.defaultCharset()))){
-				System.out.println("sent challenge: "+parts[1]);
-				System.out.println("sent challenge: "+new String(challenge,Charset.defaultCharset()));
-				System.out.println("ERROR: Handshake failed due to client challenge mismatch!");
-				return null;
-			}else {
-				String outcome = openAESChannel(username, parts[2].getBytes(), parts[3].getBytes(), parts[4].getBytes());
-				authenticated = true;
-				startServerMessageReader();
-				return outcome;
-			}
-
-		} catch (ChannelException e) {
-			return "Handshake error. Check your keyfile.";
-		} catch (NoSuchAlgorithmException e) {
-			return "Handshake error. Check your keyfile.";
-		} catch (NoSuchPaddingException e) {
-			return "Handshake error. Check your keyfile.";
-		} catch (InvalidKeyException e) {
-			return "Handshake error. Check your keyfile.";
-		} catch (BadPaddingException e) {
-			return "Handshake error. Check your keyfile.";
-		} catch (IllegalBlockSizeException e) {
-			return "Handshake error. Check your keyfile.";
 		}
+		return null;
 	}
 
 	@Override
