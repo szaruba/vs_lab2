@@ -69,9 +69,9 @@ public class AESChannel extends ChannelDecorator {
     @Override
     public Object read() throws IOException, ChannelException {
         try {
-            System.out.println(active);
+            //System.out.println(active);
             if(active == true){
-                System.out.println("Normalbetrieb");
+                //System.out.println("Normalbetrieb");
                 byte[] msg = cipherTodecrypt.doFinal((byte[]) super.read());
                 Object o = ObjectByteConverter.deserObject(msg);
                 return o;

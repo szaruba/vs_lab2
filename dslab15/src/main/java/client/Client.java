@@ -192,7 +192,7 @@ public class Client implements IClientCli, Runnable {
 			cipher.init(Cipher.ENCRYPT_MODE, publicKey);
 			encryptedMsg = cipher.doFinal(msg.getBytes());
 
-			System.out.println("1. Nachricht:" + encryptedMsg);
+			//System.out.println("1. Nachricht:" + encryptedMsg);
 			channel.write(encryptedMsg);
 
 		} catch (NoSuchAlgorithmException e) {
@@ -228,7 +228,7 @@ public class Client implements IClientCli, Runnable {
 				System.out.println("2. Nachricht FALSCH ");
 			}
 
-			System.out.println("2. Nachricht entschlüsselt" + decryptedMessage);
+			//System.out.println("2. Nachricht entschlüsselt" + decryptedMessage);
 
 			String[] parts = decryptedMessage.split("\\s");
 			if(parts.length != 5){
