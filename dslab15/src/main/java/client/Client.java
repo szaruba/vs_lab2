@@ -66,6 +66,13 @@ public class Client implements IClientCli, Runnable {
 		this.config = config;
 		authenticated = false;
 
+		String keyPath = config.getString("hmac.key");
+		try{
+			macKey = Keys.readSecretKey(new File(keyPath));
+		} catch (IOException i){
+			//do nothing
+		}
+
 		// init shell
 		shell = new Shell(componentName, userRequestStream, userResponseStream);
 		shell.register(this);
@@ -138,7 +145,7 @@ public class Client implements IClientCli, Runnable {
 			final String B64 = "a -zA -Z0 -9/+ " ;
 			assert thirdMessage.matches("["+B64+"]{43}=") : "3rd message ";
 
-			if(thirdMessage.matches("["+B64+"]{43}=")){
+			if(thirdMessage.matches("[" + B64 + "]{43}=")){
 				System.out.println("3. Nachricht OK");
 				aesChannel.write(msg);
 				aesChannel.setActive(true);
