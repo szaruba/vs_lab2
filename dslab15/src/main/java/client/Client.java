@@ -288,29 +288,38 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String logout() throws IOException {
-		ChatserverCommand c = new LogoutCommand();
-		
-		try {
-			channel.write(c);
-			
-			ServerResponse response = smr.waitForServerResponse();
-			
-			if(response.getSuccess()) {
-				this.username = null;
+		if(authenticated == false){
+			ChatserverCommand c = new LogoutCommand();
+
+			try {
+				channel.write(c);
+
+				ServerResponse response = smr.waitForServerResponse();
+
+				if(response.getSuccess()) {
+					this.username = null;
+				}
+
+				return response.getMessage();
+			} catch (ChannelException e) {
+				return "Network error: " + e.getMessage();
+			} catch (InterruptedException e) {
+				return "No response was sent for that command";
 			}
-			
-			return response.getMessage();
-		} catch (ChannelException e) {
-			return "Network error: " + e.getMessage();
-		} catch (InterruptedException e) {
-			return "No response was sent for that command";
+		}else{
+			return "You have to authenticate before you can logout!";
 		}
+
 	}
 
 	@Override
 	@Command
 	public String send(String message) throws IOException {
-		return executeCommand(new SendCommand(message));
+		if(authenticated == false){
+			return executeCommand(new SendCommand(message));
+		}else {
+			return "You have to authenticate before you can send a message";
+		}
 	}
 
 	@Override
@@ -331,44 +340,47 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String msg(String username, String message) throws IOException {
-		// todo überprüfen ob authentifiziert
-		String address = lookup(username);
+		if(authenticated == false) {
+			String address = lookup(username);
 
-		String ip = address.split(":")[0];
-		int port = Integer.parseInt(address.split(":")[1]);
+			String ip = address.split(":")[0];
+			int port = Integer.parseInt(address.split(":")[1]);
 
-		Socket s = new Socket(ip, port);
+			Socket s = new Socket(ip, port);
 
-		String response = null;
+			String response = null;
 
-		String hashedMessage = HashService.hashMessage(macKey, message);
-		try {
-			Channel privateChannel = new TcpChannel(s);
+			String hashedMessage = HashService.hashMessage(macKey, message);
+			try {
+				Channel privateChannel = new TcpChannel(s);
 
-			privateChannel.write(hashedMessage + " " + this.username + " (private): " + message);
+				privateChannel.write(hashedMessage + " " + this.username + " (private): " + message);
 
-			String output = privateChannel.read().toString();
-			String outputHashedMessage = output.substring(0, output.indexOf(" "));
-			String outputMessage = output.split("\\s")[2];
+				String output = privateChannel.read().toString();
+				String outputHashedMessage = output.substring(0, output.indexOf(" "));
+				String outputMessage = output.split("\\s")[2];
 
-			Boolean isCorrect = HashService.isHashedCorrectly(macKey, outputHashedMessage, outputMessage);
+				Boolean isCorrect = HashService.isHashedCorrectly(macKey, outputHashedMessage, outputMessage);
 
-			if (!isCorrect){
-				System.out.println("Response from " + username + " was tampered!");
+				if (!isCorrect) {
+					System.out.println("Response from " + username + " was tampered!");
+				}
+				if (output.contains("!tampered")) {
+					response = username + " replied with " + outputMessage + " (tampered!)";
+				} else {
+					response = username + " replied with " + outputMessage;
+				}
+
+			} catch (ChannelException e) {
+				response = "Network error occurred";
+			} finally {
+				s.close();
 			}
-			if (output.contains("!tampered")){
-				response = username + " replied with " + outputMessage + " (tampered!)";
-			} else {
-				response = username + " replied with " + outputMessage;
-			}
 
-		} catch (ChannelException e) {
-			response = "Network error occurred";
-		} finally {
-			s.close();
+			return response;
+		}else {
+			return "You have to authenticate before you send a private message";
 		}
-
-		return response;
 	}
 
 	@Override
@@ -380,30 +392,34 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String register(String privateAddress) throws IOException {
-		try {
-			channel.write(new RegisterCommand(privateAddress));
-		} catch (ChannelException e) {
-			return "Channel Error: " + e.getMessage();
-		}
-		ServerResponse response;
-		try {
-			response = smr.waitForServerResponse();
-			
-			// if successful open Socket to listen for private messages
-			if(response.getSuccess()) {
-				// stop current private message reader if active
-				if(pmr != null) {
-					pmr.stop();
-				}
-				
-				int port = Integer.parseInt(privateAddress.split(":")[1]);
-				pmr = new PrivateMessageReader(new ServerSocket(port));
-				pool.execute(pmr);
+		if(authenticated == false) {
+			try {
+				channel.write(new RegisterCommand(privateAddress));
+			} catch (ChannelException e) {
+				return "Channel Error: " + e.getMessage();
 			}
-			
-			return response.getMessage();
-		} catch (InterruptedException e) {
-			return "No response was sent for that command";
+			ServerResponse response;
+			try {
+				response = smr.waitForServerResponse();
+
+				// if successful open Socket to listen for private messages
+				if (response.getSuccess()) {
+					// stop current private message reader if active
+					if (pmr != null) {
+						pmr.stop();
+					}
+
+					int port = Integer.parseInt(privateAddress.split(":")[1]);
+					pmr = new PrivateMessageReader(new ServerSocket(port));
+					pool.execute(pmr);
+				}
+
+				return response.getMessage();
+			} catch (InterruptedException e) {
+				return "No response was sent for that command";
+			}
+		}else{
+			return "You have to authenticate before you can register.";
 		}
 	}
 	
