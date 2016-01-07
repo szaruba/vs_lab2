@@ -266,6 +266,8 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String login(String username, String password) throws IOException {
+		return "Please use 'authenticate <username>' to login";
+		/*
 		ChatserverCommand c = new LoginCommand(username, password);
 		
 		try {
@@ -282,7 +284,7 @@ public class Client implements IClientCli, Runnable {
 			return "Network error: " + e.getMessage();
 		} catch (InterruptedException e) {
 			return "No response was sent for that command";
-		}
+		}*/
 	}
 
 	@Override
