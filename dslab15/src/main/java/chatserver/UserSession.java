@@ -49,9 +49,9 @@ public class UserSession implements Runnable {
 
 		try{
 			request = (byte[]) this.channel.read();
-			System.out.println("1. empfangene Nachricht: "+request);
+			//System.out.println("1. empfangene Nachricht: "+request);
 			String path = new Config("chatserver").getString("key");
-			System.out.println(path);
+			//System.out.println(path);
 			PrivateKey privateKey = Keys.readPrivatePEM(new File(path));
 			Cipher cipher = Cipher.getInstance("RSA/NONE/OAEPWithSHA256AndMGF1Padding");
 
@@ -67,7 +67,7 @@ public class UserSession implements Runnable {
 				System.out.println("1. Nachricht FALSCH");
 			}
 
-			System.out.println("1. Nachricht entschlüsselt " + msg);
+			//System.out.println("1. Nachricht entschlüsselt " + msg);
 
 			String[] parts = msg.split("\\s");
 			if(parts.length == 3){
@@ -92,7 +92,7 @@ public class UserSession implements Runnable {
 				}
 
 
-				System.out.println("2. Nachricht bevor gesendet: " + msg);
+				//System.out.println("2. Nachricht bevor gesendet: " + msg);
 
 				File file = new File("keys/chatserver/" + parts[1] + ".pub.pem");
 
@@ -134,7 +134,6 @@ public class UserSession implements Runnable {
 
 			String thirdMsg = new String(thirdMessage, Charset.defaultCharset());
 			String compare = new String(serverChallenge, Charset.defaultCharset());
-			System.out.println("Vergleich 3.Nachricht: ");
 
 			final String B64 = "a -zA -Z0 -9/+ " ;
 			assert thirdMsg.matches("["+B64+"]{43}=") : "3rd message ";

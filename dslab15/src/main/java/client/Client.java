@@ -140,13 +140,15 @@ public class Client implements IClientCli, Runnable {
 
 			if(thirdMessage.matches("["+B64+"]{43}=")){
 				System.out.println("3. Nachricht OK");
+				aesChannel.write(msg);
+				aesChannel.setActive(true);
+				System.out.println("Benutzer " + this.username + "wurde erfolgreicht authentifiziert.");
+				this.channel = aesChannel;
 			}else {
 				System.out.print("3. Nachricht FALSCH");
 			}
 
-			aesChannel.write(msg);
-			aesChannel.setActive(true);
-			this.channel = aesChannel;
+
 		} catch (ChannelException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
