@@ -288,7 +288,7 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String logout() throws IOException {
-		if(authenticated == false){
+		if(authenticated == true){
 			ChatserverCommand c = new LogoutCommand();
 
 			try {
@@ -315,7 +315,7 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String send(String message) throws IOException {
-		if(authenticated == false){
+		if(authenticated == true){
 			return executeCommand(new SendCommand(message));
 		}else {
 			return "You have to authenticate before you can send a message";
@@ -340,7 +340,7 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String msg(String username, String message) throws IOException {
-		if(authenticated == false) {
+		if(authenticated == true) {
 			String address = lookup(username);
 
 			String ip = address.split(":")[0];
@@ -392,7 +392,7 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String register(String privateAddress) throws IOException {
-		if(authenticated == false) {
+		if(authenticated == true) {
 			try {
 				channel.write(new RegisterCommand(privateAddress));
 			} catch (ChannelException e) {
