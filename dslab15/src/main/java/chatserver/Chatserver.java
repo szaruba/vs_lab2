@@ -104,15 +104,17 @@ public class Chatserver implements IChatserverCli, Runnable {
 			Registry registry = LocateRegistry.getRegistry(registryHost, registryPort);
 			rootNs = (INameserverForChatserver) registry.lookup(rootId);
 		} catch (RemoteException e) {
-			System.out.println("Not registry running at " + registryHost + ":" + registryPort);
+			System.out.println("No registry running at " + registryHost + ":" + registryPort + ". Please start the root nameserver first.");
 			try {
 				exit();
+				System.exit(0);
 			} catch (IOException e1) {
 			}
 		} catch (NotBoundException e) {
 			System.out.println("Root nameserver not found at registry by id '" + rootId + "'");
 			try {
 				exit();
+				System.exit(0);
 			} catch (IOException e1) {
 			}
 		}
@@ -120,16 +122,18 @@ public class Chatserver implements IChatserverCli, Runnable {
 
 	@Override
 	public void run() {
-		// create and start a new TCP ServerSocket
-		try {
-			serverSocket = new ServerSocket(config.getInt("tcp.port"));
-			// handle incoming connections from client in a separate thread
-			pool.execute(new ConnectionListener());
-			
-			datagramSocket = new DatagramSocket(config.getInt("udp.port"));
-			pool.execute(new UdpListener());
-		} catch (IOException e) {
-			throw new RuntimeException("Cannot listen on TCP port.", e);
+		if(running) {
+			// create and start a new TCP ServerSocket
+			try {
+				serverSocket = new ServerSocket(config.getInt("tcp.port"));
+				// handle incoming connections from client in a separate thread
+				pool.execute(new ConnectionListener());
+
+				datagramSocket = new DatagramSocket(config.getInt("udp.port"));
+				pool.execute(new UdpListener());
+			} catch (IOException e) {
+				throw new RuntimeException("Cannot listen on TCP port.", e);
+			}
 		}
 	}
 
@@ -159,9 +163,12 @@ public class Chatserver implements IChatserverCli, Runnable {
 	@Command
 	public String exit() throws IOException {
 		running = false;
-		pool.shutdownNow();
-		serverSocket.close();
-		datagramSocket.close();
+		if(pool != null)
+			pool.shutdownNow();
+		if(serverSocket != null)
+			serverSocket.close();
+		if(datagramSocket != null)
+			datagramSocket.close();
 		
 		// close sessions to logged in clients
 		for(Channel c:userChannels.values()){
@@ -172,7 +179,7 @@ public class Chatserver implements IChatserverCli, Runnable {
 		for(UserSession s:sessions){
 			s.close();
 		}
-		
+
 		return "Good bye";
 	}
 	
