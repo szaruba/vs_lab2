@@ -101,9 +101,9 @@ public class Client implements IClientCli, Runnable {
 			this.channel = new Base64Channel(tcpChannel);
 
 		} catch (IOException e) {
-			e.printStackTrace();
+			System.out.println("Network error: " + e.getLocalizedMessage());
 		} catch (ChannelException e) {
-			e.printStackTrace();
+			System.out.println("Network error: " + e.getLocalizedMessage());
 		}
 	}
 
@@ -129,13 +129,13 @@ public class Client implements IClientCli, Runnable {
 		} catch (InterruptedException e) {
 			return "No response was sent for that command";
 		} catch (IOException e) {
-			e.printStackTrace();
+
 		}
 		return null;
 	}
 
 
-	private void openAESChannel(byte[] msg, byte[] aesKey, byte[] aesIv){
+	private String openAESChannel(String username, byte[] msg, byte[] aesKey, byte[] aesIv){
 		try {
 			AESChannel aesChannel = new AESChannel(this.channel, aesKey, aesIv);
 
@@ -149,24 +149,26 @@ public class Client implements IClientCli, Runnable {
 				System.out.println("3. Nachricht OK");
 				aesChannel.write(msg);
 				aesChannel.setActive(true);
-				System.out.println("Benutzer " + this.username + "wurde erfolgreicht authentifiziert.");
+
+				this.username = username;
 				this.channel = aesChannel;
+				return "User " + username + " was successfully authenticated.";
 			}else {
-				System.out.print("3. Nachricht FALSCH");
+				return "3. msg wrong";
 			}
 
 
 		} catch (ChannelException e) {
-			e.printStackTrace();
+			return "Network error: " + e.getMessage();
 		} catch (IOException e) {
-			e.printStackTrace();
+			return "Network error: " + e.getMessage();
 		}
 	}
 
 	@Override
 	@Command
 	public String authenticate(String username) throws IOException {
-		this.username = username;
+
 
 		//Sende 1. Nachricht
 		byte[] challenge = SecurityUtils.generateEncryptedSecureRandom();
@@ -203,17 +205,17 @@ public class Client implements IClientCli, Runnable {
 			channel.write(encryptedMsg);
 
 		} catch (NoSuchAlgorithmException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		} catch (NoSuchPaddingException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		} catch (InvalidKeyException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		} catch (BadPaddingException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		} catch (IllegalBlockSizeException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		} catch (ChannelException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		}
 		//--------------------------------------------------------------
 		//Empfange Nachricht vom Server
@@ -222,7 +224,7 @@ public class Client implements IClientCli, Runnable {
 			//System.out.println("2. empfangene Nachricht " + okMsg);
 			String decryptedMessage;
 			String privateKeyPathForOk = config.getString("keys.dir");
-			PrivateKey privateKeyForOk = Keys.readPrivatePEM(new File(privateKeyPathForOk+"/"+this.username+".pem"));
+			PrivateKey privateKeyForOk = Keys.readPrivatePEM(new File(privateKeyPathForOk+"/"+username+".pem"));
 			Cipher cipher = Cipher.getInstance("RSA/NONE/OAEPWithSHA256AndMGF1Padding");
 			cipher.init(Cipher.DECRYPT_MODE, privateKeyForOk);
 			decryptedMessage = new String(cipher.doFinal(okMsg), Charset.defaultCharset());
@@ -248,26 +250,25 @@ public class Client implements IClientCli, Runnable {
 				System.out.println("ERROR: Handshake failed due to client challenge mismatch!");
 				return null;
 			}else {
-				openAESChannel(parts[2].getBytes(), parts[3].getBytes(), parts[4].getBytes());
+				String outcome = openAESChannel(username, parts[2].getBytes(), parts[3].getBytes(), parts[4].getBytes());
 				authenticated = true;
 				startServerMessageReader();
+				return outcome;
 			}
 
 		} catch (ChannelException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		} catch (NoSuchAlgorithmException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		} catch (NoSuchPaddingException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		} catch (InvalidKeyException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		} catch (BadPaddingException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		} catch (IllegalBlockSizeException e) {
-			e.printStackTrace();
+			return "Handshake error. Check your keyfile.";
 		}
-
-		return null;
 	}
 
 	@Override
@@ -307,6 +308,8 @@ public class Client implements IClientCli, Runnable {
 
 				if(response.getSuccess()) {
 					this.username = null;
+					if(pmr != null)pmr.stop();
+					authenticated = false;
 				}
 
 				return response.getMessage();
@@ -350,43 +353,59 @@ public class Client implements IClientCli, Runnable {
 	@Command
 	public String msg(String username, String message) throws IOException {
 		if(authenticated == true) {
-			String address = lookup(username);
+			ChatserverCommand command = new LookupCommand(username);
 
-			String ip = address.split(":")[0];
-			int port = Integer.parseInt(address.split(":")[1]);
-
-			Socket s = new Socket(ip, port);
-
-			String response = null;
-
-			String hashedMessage = HashService.hashMessage(macKey, message);
 			try {
-				Channel privateChannel = new TcpChannel(s);
+				channel.write(command);
+				ServerResponse response1 = smr.waitForServerResponse();
 
-				privateChannel.write(hashedMessage + " " + this.username + " (private): " + message);
+				if(response1.getSuccess()) {
+					String address = response1.getMessage();
 
-				String output = privateChannel.read().toString();
-				String outputHashedMessage = output.substring(0, output.indexOf(" "));
-				String outputMessage = output.split("\\s")[2];
 
-				Boolean isCorrect = HashService.isHashedCorrectly(macKey, outputHashedMessage, outputMessage);
+					String ip = address.split(":")[0];
+					int port = Integer.parseInt(address.split(":")[1]);
 
-				if (!isCorrect) {
-					System.out.println("Response from " + username + " was tampered!");
-				}
-				if (output.contains("!tampered")) {
-					response = username + " replied with " + outputMessage + " (tampered!)";
+					Socket s = new Socket(ip, port);
+
+					String response = null;
+
+					String hashedMessage = HashService.hashMessage(macKey, message);
+					try {
+						Channel privateChannel = new TcpChannel(s);
+
+						privateChannel.write(hashedMessage + " " + this.username + " (private): " + message);
+
+						String output = privateChannel.read().toString();
+						String outputHashedMessage = output.substring(0, output.indexOf(" "));
+						String outputMessage = output.split("\\s")[2];
+
+						Boolean isCorrect = HashService.isHashedCorrectly(macKey, outputHashedMessage, outputMessage);
+
+						if (!isCorrect) {
+							System.out.println("Response from " + username + " was tampered!");
+						}
+						if (output.contains("!tampered")) {
+							response = username + " replied with " + outputMessage + " (tampered!)";
+						} else {
+							response = username + " replied with " + outputMessage;
+						}
+
+					} catch (ChannelException e) {
+						response = "Network error occurred";
+					} finally {
+						s.close();
+					}
+
+					return response;
 				} else {
-					response = username + " replied with " + outputMessage;
+					return response1.getMessage();
 				}
-
 			} catch (ChannelException e) {
-				response = "Network error occurred";
-			} finally {
-				s.close();
+				return "Network error: " + e.getMessage();
+			} catch (InterruptedException e) {
+				return "Network error: " + e.getMessage();
 			}
-
-			return response;
 		}else {
 			return "You have to authenticate before you send a private message";
 		}
@@ -395,7 +414,20 @@ public class Client implements IClientCli, Runnable {
 	@Override
 	@Command
 	public String lookup(String username) throws IOException {
-		return executeCommand(new LookupCommand(username));
+		try {
+
+			channel.write(new LookupCommand(username));
+
+			ServerResponse response = smr.waitForServerResponse();
+			if(response.getSuccess())
+				return response.getMessage();
+			else
+				throw new IOException(response.getMessage());
+		} catch (ChannelException e) {
+			return "Network error: " + e.getMessage();
+		} catch (InterruptedException e) {
+			return "No response was sent for that command";
+		}
 	}
 
 	@Override
@@ -552,7 +584,7 @@ public class Client implements IClientCli, Runnable {
 			} catch (ChannelException e) {
 				System.out.println("Server not reachable.");
 			} catch (IOException e) {
-				e.printStackTrace();
+
 			}
 		}
 		

@@ -6,6 +6,8 @@ import channel.ChannelException;
 import chatserver.Chatserver;
 import chatserver.ChatserverException;
 
+import java.io.IOException;
+
 public class LogoutCommand extends ChatserverCommand {
 
 	
@@ -23,9 +25,19 @@ public class LogoutCommand extends ChatserverCommand {
 				return new ServerResponse(e.getMessage(), false);
 			}
 			session.setLoggedInUser(null);
+			Channel c = session.getChannel();
+
+			try {
+				c.write(new ServerResponse("Successfully logged out", true));
+			} catch (ChannelException e) {
+
+			} catch (IOException e) {
+
+			}
+
 			session.close();
-			
-			return new ServerResponse("Successfully logged out", true);
+
+			return null;
 		}
 	}
 }

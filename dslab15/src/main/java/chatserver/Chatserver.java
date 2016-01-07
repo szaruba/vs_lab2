@@ -205,9 +205,6 @@ public class Chatserver implements IChatserverCli, Runnable {
 	public void logout(String username) throws ChatserverException  {
 		if(!isLoggedIn(username)) throw new ChatserverException("Not logged in");
 
-		// TODO: unregister the address at logout
-		//userInformation.get(username).setAddress(null);
-
 		userChannels.remove(username);
 	}
 	

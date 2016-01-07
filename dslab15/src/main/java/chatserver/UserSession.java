@@ -1,6 +1,6 @@
 package chatserver;
 
-import java.io.Closeable;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -9,7 +9,7 @@ import java.security.*;
 import channel.AESChannel;
 import channel.Base64Channel;
 import model.commands.ChatserverCommand;
-import model.responses.ServerResponse;
+
 import channel.Channel;
 import channel.ChannelException;
 import org.bouncycastle.util.encoders.Base64;
@@ -35,9 +35,7 @@ public class UserSession implements Runnable {
 		this.server = server;
 		loggedInUser = null;
 
-		// // TODO: 06.01.2016 authentifizierungsprozess abwickeln
-			handleAuthenticate();
-
+		handleAuthenticate();
 	}
 
 	public void handleAuthenticate() {
@@ -114,19 +112,19 @@ public class UserSession implements Runnable {
 			}
 
 		} catch (IOException e) {
-			e.printStackTrace();
+			System.out.println("Handshake error: " + e.getLocalizedMessage());
 		} catch (NoSuchAlgorithmException e) {
-			e.printStackTrace();
+			System.out.println("Handshake error: " + e.getLocalizedMessage());
 		} catch (NoSuchPaddingException e) {
-			e.printStackTrace();
+			System.out.println("Handshake error: " + e.getLocalizedMessage());
 		} catch (BadPaddingException e) {
-			e.printStackTrace();
+			System.out.println("Handshake error: " + e.getLocalizedMessage());
 		} catch (IllegalBlockSizeException e) {
-			e.printStackTrace();
+			System.out.println("Handshake error: " + e.getLocalizedMessage());
 		} catch (InvalidKeyException e) {
-			e.printStackTrace();
+			System.out.println("Handshake error: " + e.getLocalizedMessage());
 		} catch (ChannelException e) {
-			e.printStackTrace();
+			System.out.println("Handshake error: " + e.getLocalizedMessage());
 		}
 
 		try {
@@ -153,9 +151,9 @@ public class UserSession implements Runnable {
 				System.out.println("3. Nachricht FALSCH");
 			}
 		} catch (ChannelException e) {
-			e.printStackTrace();
+			System.out.println("Handshake error: " + e.getLocalizedMessage());
 		} catch (IOException e) {
-			e.printStackTrace();
+			System.out.println("Handshake error: " + e.getLocalizedMessage());
 		}
 	}
 
@@ -177,9 +175,9 @@ public class UserSession implements Runnable {
 				channel.write(command.execute());
 				
 			} catch (ChannelException e) {
-
+				System.out.println("Error: " + e.getLocalizedMessage());
 			} catch (IOException e) {
-				e.printStackTrace();
+				System.out.println("Error: " + e.getLocalizedMessage());
 			}
 
 		}
